@@ -21,9 +21,7 @@
                 "showReuseMessage": true,
                 "clear": false
             },
-            "runOptions": {
-                "runOn": "folderOpen"
-            },
+
             "isBackground": true,
             "problemMatcher": {
                 "owner": "webpack",
