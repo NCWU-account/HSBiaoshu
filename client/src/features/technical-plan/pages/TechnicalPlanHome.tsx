@@ -1,75 +1,127 @@
-const stages = [
-  { title: '解析招标文件', desc: '提取项目背景、评分要点、技术要求和响应边界。' },
-  { title: '生成方案结构', desc: '形成可审阅的章节骨架，便于人工快速校准。' },
-  { title: '撰写正文内容', desc: '按章节生成专业、克制、可落地的技术响应内容。' },
-  { title: '导出交付文档', desc: '输出可继续编辑和归档的标书文件。' },
+import DocumentAnalysisPage from './DocumentAnalysisPage';
+import OutlineEditPage from './OutlineEditPage';
+import ContentEditPage from './ContentEditPage';
+import { useTechnicalPlanWorkflow } from '../hooks/useTechnicalPlanWorkflow';
+import { FloatingToolbar, ToolbarArrowLeftIcon, ToolbarArrowRightIcon } from '../../../shared/ui';
+import type { TechnicalPlanStep } from '../types';
+
+const steps: TechnicalPlanStep[] = [
+  'document-analysis',
+  'outline-edit',
+  'content-edit',
+  'expand',
 ];
 
+const stepLabels: Record<TechnicalPlanStep, string> = {
+  'document-analysis': '标书解析',
+  'outline-edit': '目录编辑',
+  'content-edit': '生成正文',
+  expand: '扩写',
+};
+
+const resetState = {
+  step: 'document-analysis' as TechnicalPlanStep,
+  fileName: '',
+  fileContent: '',
+  projectOverview: '',
+  techRequirements: '',
+  outlineData: null,
+};
+
 function TechnicalPlanHome() {
+  const { state, setState } = useTechnicalPlanWorkflow();
+  const activeIndex = steps.indexOf(state.step);
+
+  const switchStep = (step: TechnicalPlanStep) => {
+    setState((prev) => ({ ...prev, step }));
+  };
+
+  const goToOffset = (offset: number) => {
+    const nextStep = steps[activeIndex + offset];
+    if (nextStep) {
+      switchStep(nextStep);
+    }
+  };
+
+  const toolbarGroups = [
+    {
+      id: 'technical-plan-reset',
+      actions: [
+        {
+          id: 'reset',
+          label: '重置',
+          variant: 'danger' as const,
+          tooltip: '清空当前技术方案流程',
+          onClick: () => setState(resetState),
+        },
+        {
+          id: 'home',
+          label: '首页',
+          variant: state.step === 'document-analysis' ? 'primary' as const : 'secondary' as const,
+          tooltip: '回到标书解析',
+          onClick: () => switchStep('document-analysis'),
+        },
+      ],
+    },
+    {
+      id: 'technical-plan-navigation',
+      actions: [
+        {
+          id: 'previous-step',
+          label: '上一步',
+          icon: <ToolbarArrowLeftIcon />,
+          disabled: activeIndex <= 0,
+          tooltip: activeIndex <= 0 ? '当前已经是第一步' : `返回${stepLabels[steps[activeIndex - 1]]}`,
+          onClick: () => goToOffset(-1),
+        },
+        {
+          id: 'next-step',
+          label: '下一步',
+          icon: <ToolbarArrowRightIcon />,
+          variant: 'primary' as const,
+          disabled: activeIndex >= steps.length - 1,
+          tooltip: activeIndex >= steps.length - 1 ? '当前已经是最后一步' : `进入${stepLabels[steps[activeIndex + 1]]}`,
+          onClick: () => goToOffset(1),
+        },
+      ],
+    },
+  ];
+
   return (
-    <div className="page-stack">
-      <section className="hero-panel technical-hero">
-        <div className="hero-copy">
-          <span className="section-kicker">核心工作流</span>
-          <h2>从招标文件到可交付技术方案的完整工作台</h2>
-          <p>
-            新客户端先保留清晰的业务入口和信息层级，后续可逐步接入解析、目录、正文和导出能力。
-          </p>
-          <div className="hero-actions">
-            <button type="button" className="primary-action">新建技术方案</button>
-            <button type="button" className="secondary-action">导入招标文件</button>
-          </div>
-        </div>
-        <div className="hero-card" aria-label="技术方案进度概览">
-          <span>当前方案</span>
-          <strong>未命名项目</strong>
-          <div className="progress-track"><span style={{ width: '34%' }} /></div>
-          <small>已完成 1 / 4 个关键阶段</small>
-        </div>
-      </section>
+    <div className="page-stack technical-workbench">
+      {state.step === 'document-analysis' && (
+        <DocumentAnalysisPage
+          fileName={state.fileName}
+          fileContent={state.fileContent}
+          projectOverview={state.projectOverview}
+          techRequirements={state.techRequirements}
+          onFileImported={(fileName, fileContent) => setState((prev) => ({
+            ...prev,
+            fileName,
+            fileContent,
+            projectOverview: '',
+            techRequirements: '',
+          }))}
+          onAnalysisComplete={(projectOverview, techRequirements) => setState((prev) => ({
+            ...prev,
+            projectOverview,
+            techRequirements,
+          }))}
+          onNext={() => switchStep('outline-edit')}
+        />
+      )}
 
-      <section className="stage-grid" aria-label="技术方案流程">
-        {stages.map((stage, index) => (
-          <article className="stage-card" key={stage.title}>
-            <span>{String(index + 1).padStart(2, '0')}</span>
-            <h3>{stage.title}</h3>
-            <p>{stage.desc}</p>
-          </article>
-        ))}
-      </section>
+      {state.step === 'outline-edit' && <OutlineEditPage />}
+      {state.step === 'content-edit' && <ContentEditPage />}
+      {state.step === 'expand' && (
+        <section className="empty-panel compact-placeholder">
+          <span className="section-kicker">STEP 04</span>
+          <h3>扩写</h3>
+          <p>后续接入旧方案导入、章节扩写和人工校准。</p>
+        </section>
+      )}
 
-      <section className="workspace-grid">
-        <article className="panel panel-large">
-          <div className="panel-heading">
-            <span className="section-kicker">方案草稿</span>
-            <button type="button" className="text-button">查看全部</button>
-          </div>
-          <div className="draft-preview">
-            <div>
-              <strong>1. 项目理解与建设目标</strong>
-              <p>围绕用户业务现状、建设范围、实施目标形成项目整体理解。</p>
-            </div>
-            <div>
-              <strong>2. 总体技术架构</strong>
-              <p>说明系统分层、关键模块、部署边界和安全控制策略。</p>
-            </div>
-            <div>
-              <strong>3. 实施与保障方案</strong>
-              <p>覆盖里程碑、交付物、质量控制和项目风险管理。</p>
-            </div>
-          </div>
-        </article>
-
-        <article className="panel">
-          <span className="section-kicker">质量提示</span>
-          <h3>优先保证内容可信、结构清楚、响应准确。</h3>
-          <ul className="quiet-list">
-            <li>避免泛泛而谈的模板化表述</li>
-            <li>每个章节对应明确招标要求</li>
-            <li>关键承诺可追溯、可验收</li>
-          </ul>
-        </article>
-      </section>
+      <FloatingToolbar groups={toolbarGroups} label="技术方案工具条" />
     </div>
   );
 }

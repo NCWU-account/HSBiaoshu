@@ -10,3 +10,5 @@ export {
   ToolbarDocumentIcon,
   ToolbarOutlineIcon,
 } from './FloatingToolbar';
+export { ToastProvider, useToast } from './ToastProvider';
+export type { ToastType } from './ToastProvider';

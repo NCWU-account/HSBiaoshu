@@ -14,6 +14,7 @@ export interface FileImportResult {
   success: boolean;
   message: string;
   file_content?: string;
+  file_name?: string;
   old_outline?: string;
 }
 

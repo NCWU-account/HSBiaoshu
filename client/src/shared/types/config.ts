@@ -7,6 +7,7 @@ export interface AiConfig {
 export interface ConfigSaveResult {
   success: boolean;
   message: string;
+  config_path?: string;
 }
 
 export interface ModelListResult {
@@ -15,10 +16,19 @@ export interface ModelListResult {
   models: string[];
 }
 
+export interface ImageModelTestResult {
+  success: boolean;
+  message: string;
+  image_url?: string;
+  image_data?: string;
+  mime_type?: string;
+}
+
 export type ImageModelProvider = 'volcengine' | 'google-ai-studio';
 
 export interface ImageModelConfig {
   provider: ImageModelProvider;
+  base_url?: string;
   api_key: string;
   model_name: string;
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useToast } from '../../../shared/ui';
 import type { ClientConfig, FileParserProvider, ImageModelProvider } from '../../../shared/types';
 import type { SettingsPageState } from '../types';
 
@@ -16,6 +17,17 @@ const imageProviders: Array<{ value: ImageModelProvider; label: string }> = [
   { value: 'volcengine', label: '火山方舟' },
   { value: 'google-ai-studio', label: 'Google AI Studio' },
 ];
+
+const imageProviderDefaults: Record<ImageModelProvider, { base_url: string; model_name: string }> = {
+  volcengine: {
+    base_url: 'https://ark.cn-beijing.volces.com/api/v3',
+    model_name: '',
+  },
+  'google-ai-studio': {
+    base_url: 'https://generativelanguage.googleapis.com/v1beta',
+    model_name: 'gemini-3.1-flash-image-preview',
+  },
+};
 
 const fileParserProviders: Array<{ value: FileParserProvider; label: string }> = [
   { value: 'local', label: '本地解析' },
@@ -76,6 +88,7 @@ const initialState: SettingsPageState = {
   },
   imageModel: {
     provider: 'volcengine',
+    base_url: 'https://ark.cn-beijing.volces.com/api/v3',
     api_key: '',
     model_name: '',
   },
@@ -90,7 +103,11 @@ function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [textModels, setTextModels] = useState<string[]>([]);
   const [imageModels, setImageModels] = useState<string[]>([]);
-  const [message, setMessage] = useState('');
+  const [loadingModels, setLoadingModels] = useState<'text' | 'image' | null>(null);
+  const [testingTextModel, setTestingTextModel] = useState(false);
+  const [testingImageModel, setTestingImageModel] = useState(false);
+  const [imageTestPreview, setImageTestPreview] = useState<{ src: string; title: string } | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     void loadTextConfig();
@@ -114,7 +131,8 @@ function SettingsPage() {
         fileParser: config.file_parser,
       }));
     } catch (error) {
-      console.warn('加载客户端配置失败:', error);
+      const errorMessage = error instanceof Error ? error.message : '加载客户端配置失败';
+      showToast(errorMessage, 'error');
     }
   };
 
@@ -126,30 +144,106 @@ function SettingsPage() {
     file_parser: state.fileParser,
   });
 
+  const saveClientConfig = async (config: ClientConfig) => {
+    try {
+      const result = await window.yibiao?.config.save(config);
+      showToast(result?.success ? '配置已保存' : result?.message || '配置保存失败', result?.success ? 'success' : 'error');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '配置保存失败';
+      showToast(errorMessage, 'error');
+    }
+  };
+
   const saveTextConfig = async () => {
-    const result = await window.yibiao?.config.save(createClientConfig());
-    setMessage(result?.success ? '文本模型配置已保存' : result?.message || '文本模型配置已保存');
+    await saveClientConfig(createClientConfig());
+  };
+
+  const testTextConfig = async () => {
+    try {
+      setTestingTextModel(true);
+      await window.yibiao?.config.save(createClientConfig());
+      const content = await window.yibiao?.ai.chat({
+        messages: [{ role: 'user', content: 'hi' }],
+        temperature: 0,
+      });
+      const reply = (content || '').trim();
+      showToast(reply ? `测试成功：${reply.slice(0, 160)}` : '测试成功', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '测试失败', 'error');
+    } finally {
+      setTestingTextModel(false);
+    }
   };
 
   const saveImageConfig = async () => {
-    const result = await window.yibiao?.config.save(createClientConfig());
-    setMessage(result?.success ? '生图模型配置已保存' : result?.message || '生图模型配置已保存');
+    await saveClientConfig(createClientConfig());
+  };
+
+  const testImageConfig = async () => {
+    try {
+      setTestingImageModel(true);
+      await window.yibiao?.config.save(createClientConfig());
+      const result = await window.yibiao?.ai.testImageModel(createClientConfig());
+      const previewSrc = result?.image_url || (result?.image_data ? `data:${result.mime_type || 'image/png'};base64,${result.image_data}` : '');
+
+      if (previewSrc) {
+        setImageTestPreview({ src: previewSrc, title: `${state.imageModel.provider === 'volcengine' ? '火山方舟' : 'Google AI Studio'} 测试图片` });
+      }
+
+      showToast(result?.message || '生图模型测试成功', result?.success ? 'success' : 'error');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '生图模型测试失败', 'error');
+    } finally {
+      setTestingImageModel(false);
+    }
   };
 
   const saveFileParserConfig = async () => {
-    const result = await window.yibiao?.config.save(createClientConfig());
-    setMessage(result?.success ? '文件解析配置已保存' : result?.message || '文件解析配置已保存');
+    await saveClientConfig(createClientConfig());
   };
 
   const fetchTextModels = async () => {
-    const result = await window.yibiao?.config.listModels();
-    setTextModels(result?.models || []);
-    setMessage(result?.message || `获取到 ${result?.models.length || 0} 个文本模型`);
+    try {
+      setLoadingModels('text');
+      const result = await window.yibiao?.config.listModels();
+      setTextModels(result?.models || []);
+      showToast(result?.message || `获取到 ${result?.models.length || 0} 个文本模型`, result?.success ? 'success' : 'info');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '获取文本模型失败', 'error');
+    } finally {
+      setLoadingModels(null);
+    }
   };
 
   const fetchImageModels = async () => {
-    setImageModels([]);
-    setMessage('生图模型列表接口已预留，后续按服务商分别接入。');
+    try {
+      setLoadingModels('image');
+      if (state.imageModel.provider === 'volcengine') {
+        setImageModels([]);
+        showToast('火山方舟请填写控制台中已开通的模型或推理接入点 ID。');
+        return;
+      }
+
+      if (state.imageModel.provider === 'google-ai-studio') {
+        const models = [
+          'gemini-3.1-flash-image-preview',
+          'gemini-3-pro-image-preview',
+          'gemini-2.5-flash-image',
+        ];
+        setImageModels(models);
+        setState((prev) => ({
+          ...prev,
+          imageModel: { ...prev.imageModel, model_name: prev.imageModel.model_name || models[0] },
+        }));
+        showToast('已载入 Google AI Studio 生图模型', 'success');
+        return;
+      }
+
+      setImageModels([]);
+      showToast('该服务商模型列表接口暂未接入。');
+    } finally {
+      setLoadingModels(null);
+    }
   };
 
   return (
@@ -168,8 +262,6 @@ function SettingsPage() {
           </button>
         ))}
       </div>
-
-      {message && <div className="settings-message">{message}</div>}
 
       {activeTab === 'general' && (
         <section className="settings-page-section">
@@ -273,12 +365,24 @@ function SettingsPage() {
                     }))}
                   />
                 )}
-                <button type="button" className="inline-action" onClick={fetchTextModels}>获取</button>
+                <button
+                  type="button"
+                  className="inline-action"
+                  onClick={fetchTextModels}
+                  disabled={loadingModels === 'text'}
+                >
+                  {loadingModels === 'text' && <span className="inline-spinner" aria-hidden="true" />}
+                  {loadingModels === 'text' ? '获取中' : '获取'}
+                </button>
               </div>
             </label>
           </div>
           <div className="settings-actions">
-            <button type="button" className="primary-action" onClick={saveTextConfig}>保存文本模型配置</button>
+            <button type="button" className="secondary-action" onClick={testTextConfig} disabled={testingTextModel}>
+              {testingTextModel && <span className="inline-spinner" aria-hidden="true" />}
+              {testingTextModel ? '测试中' : '测试'}
+            </button>
+            <button type="button" className="primary-action" onClick={saveTextConfig}>保存</button>
           </div>
         </section>
       )}
@@ -298,19 +402,39 @@ function SettingsPage() {
               <select
                 value={state.imageModel.provider}
                 onChange={(event) => setState((prev) => ({
-                ...prev,
-                imageModel: { ...prev.imageModel, provider: event.target.value as ImageModelProvider },
-              }))}
-            >
-              {imageProviders.map((provider) => (
+                  ...prev,
+                  imageModel: {
+                    ...prev.imageModel,
+                    provider: event.target.value as ImageModelProvider,
+                    base_url: imageProviderDefaults[event.target.value as ImageModelProvider].base_url,
+                    model_name: imageProviderDefaults[event.target.value as ImageModelProvider].model_name,
+                  },
+                }))}
+              >
+                {imageProviders.map((provider) => (
                   <option value={provider.value} key={provider.value}>{provider.label}</option>
                 ))}
               </select>
             </label>
             <label className="settings-row">
               <div className="settings-row-copy">
+                <strong>Base URL</strong>
+                <span>{state.imageModel.provider === 'volcengine' ? '火山方舟 OpenAI 兼容接口地址' : 'Google Gemini API REST 地址'}</span>
+              </div>
+              <input
+                type="text"
+                value={state.imageModel.base_url || ''}
+                placeholder={imageProviderDefaults[state.imageModel.provider].base_url}
+                onChange={(event) => setState((prev) => ({
+                  ...prev,
+                  imageModel: { ...prev.imageModel, base_url: event.target.value },
+                }))}
+              />
+            </label>
+            <label className="settings-row">
+              <div className="settings-row-copy">
                 <strong>API Key</strong>
-                <span>用于图片生成能力，当前仅保存配置，调用接口后续接入</span>
+                <span>{state.imageModel.provider === 'volcengine' ? '用于调用火山方舟图片生成 API' : '用于调用 Google AI Studio Gemini API'}</span>
               </div>
               <input
                 type="password"
@@ -325,7 +449,7 @@ function SettingsPage() {
             <label className="settings-row">
               <div className="settings-row-copy">
                 <strong>模型名称</strong>
-                <span>可手动录入，也可按服务商拉取模型列表</span>
+                <span>{state.imageModel.provider === 'volcengine' ? '填写火山方舟控制台中已开通的模型或推理接入点 ID' : '选择或填写支持图片生成的 Gemini 模型'}</span>
               </div>
               <div className="settings-control-with-action">
                 {imageModels.length > 0 ? (
@@ -342,20 +466,41 @@ function SettingsPage() {
                   <input
                     type="text"
                     value={state.imageModel.model_name}
-                    placeholder="可手动录入模型名称"
+                    placeholder={state.imageModel.provider === 'volcengine' ? '请输入已开通的模型或推理接入点 ID' : 'gemini-3.1-flash-image-preview'}
                     onChange={(event) => setState((prev) => ({
                       ...prev,
                       imageModel: { ...prev.imageModel, model_name: event.target.value },
                     }))}
                   />
                 )}
-                <button type="button" className="inline-action" onClick={fetchImageModels}>获取</button>
+                <button
+                  type="button"
+                  className="inline-action"
+                  onClick={fetchImageModels}
+                  disabled={loadingModels === 'image'}
+                >
+                  {loadingModels === 'image' && <span className="inline-spinner" aria-hidden="true" />}
+                  {loadingModels === 'image' ? '获取中' : '获取'}
+                </button>
               </div>
             </label>
           </div>
           <div className="settings-actions">
-            <button type="button" className="primary-action" onClick={saveImageConfig}>保存生图模型配置</button>
+            <button type="button" className="secondary-action" onClick={testImageConfig} disabled={testingImageModel}>
+              {testingImageModel && <span className="inline-spinner" aria-hidden="true" />}
+              {testingImageModel ? '测试中' : '测试'}
+            </button>
+            <button type="button" className="primary-action" onClick={saveImageConfig}>保存</button>
           </div>
+          {imageTestPreview && (
+            <div className="image-test-preview">
+              <div>
+                <strong>{imageTestPreview.title}</strong>
+                <span>用于确认当前生图配置可用</span>
+              </div>
+              <img src={imageTestPreview.src} alt="生图模型测试结果" />
+            </div>
+          )}
         </section>
       )}
 

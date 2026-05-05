@@ -3,6 +3,7 @@ import type { TechnicalPlanState } from '../types';
 
 const initialState: TechnicalPlanState = {
   step: 'document-analysis',
+  fileName: '',
   fileContent: '',
   projectOverview: '',
   techRequirements: '',

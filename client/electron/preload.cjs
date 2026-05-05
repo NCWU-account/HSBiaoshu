@@ -11,6 +11,7 @@ const bridge = {
   ai: {
     chat: (request) => ipcRenderer.invoke('ai:chat', request),
     requestJson: (request) => ipcRenderer.invoke('ai:request-json', request),
+    testImageModel: (config) => ipcRenderer.invoke('ai:test-image-model', config),
   },
   file: {
     importDocument: () => ipcRenderer.invoke('file:import-document'),

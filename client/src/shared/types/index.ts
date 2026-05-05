@@ -6,6 +6,7 @@ export type {
   ConfigSaveResult,
   FileParserConfig,
   FileParserProvider,
+  ImageModelTestResult,
   ImageModelConfig,
   ImageModelProvider,
   ModelListResult,

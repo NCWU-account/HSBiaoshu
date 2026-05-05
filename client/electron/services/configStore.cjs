@@ -8,6 +8,7 @@ const defaultConfig = {
   model_name: 'gpt-3.5-turbo',
   image_model: {
     provider: 'volcengine',
+    base_url: 'https://ark.cn-beijing.volces.com/api/v3',
     api_key: '',
     model_name: '',
   },
@@ -36,6 +37,10 @@ function createConfigStore(app) {
   const configFile = getConfigFilePath(app);
 
   return {
+    getConfigFilePath() {
+      return configFile;
+    },
+
     load() {
       if (!fs.existsSync(configFile)) {
         return normalizeConfig();
@@ -44,15 +49,19 @@ function createConfigStore(app) {
       try {
         const raw = fs.readFileSync(configFile, 'utf-8');
         return normalizeConfig(JSON.parse(raw));
-      } catch {
-        return normalizeConfig();
+      } catch (error) {
+        throw new Error(`配置文件读取失败：${error.message}`);
       }
     },
 
     save(config) {
-      fs.mkdirSync(path.dirname(configFile), { recursive: true });
-      fs.writeFileSync(configFile, JSON.stringify(normalizeConfig(config), null, 2), 'utf-8');
-      return { success: true, message: '配置已保存' };
+      try {
+        fs.mkdirSync(path.dirname(configFile), { recursive: true });
+        fs.writeFileSync(configFile, JSON.stringify(normalizeConfig(config), null, 2), 'utf-8');
+        return { success: true, message: '配置已保存', config_path: configFile };
+      } catch (error) {
+        throw new Error(`配置文件保存失败：${error.message}`);
+      }
     },
   };
 }
